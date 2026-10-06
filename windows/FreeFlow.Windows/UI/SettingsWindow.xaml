@@ -1,0 +1,192 @@
+<Window x:Class="FreeFlow.Windows.UI.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FreeFlow Settings"
+        Width="640" Height="760" MinWidth="560" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Icon="/Assets/FreeFlow.ico"
+        FontFamily="Segoe UI Variable Text, Segoe UI">
+
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="18,16" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="0,12,0,6" />
+        </Style>
+        <LinearGradientBrush x:Key="BrandBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+            <GradientStop Color="#8C6BFF" Offset="0" />
+            <GradientStop Color="#4A9EFF" Offset="0.5" />
+            <GradientStop Color="#5CE6DB" Offset="1" />
+        </LinearGradientBrush>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="24,22,24,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Image Source="/Assets/FreeFlow.ico" Width="44" Height="44" Margin="0,0,14,0" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="FreeFlow" FontSize="22" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                    <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="#30D158" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock x:Name="StatusText" Text="Ready" FontSize="12" Opacity="0.8" VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,0,24,0">
+            <StackPanel Margin="0,0,0,12">
+
+                <!-- Try it -->
+                <Border Style="{StaticResource Card}" BorderBrush="{StaticResource BrandBrush}" BorderThickness="1.5">
+                    <StackPanel>
+                        <TextBlock Text="Try it" Style="{StaticResource CardTitle}" />
+                        <TextBlock x:Name="TryItHint" Style="{StaticResource Hint}"
+                                   Text="Click in the box, hold your shortcut, speak, then let go." />
+                        <TextBox x:Name="TryItBox" Margin="0,10,0,0" Height="70" TextWrapping="Wrap" AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto" />
+                    </StackPanel>
+                </Border>
+
+                <!-- API key -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="API key" Style="{StaticResource CardTitle}" />
+                        <TextBlock Style="{StaticResource Hint}">
+                            FreeFlow sends your audio to the speech service you choose. Groq is fast and has a free tier.
+                            <Hyperlink NavigateUri="https://console.groq.com/keys" RequestNavigate="Hyperlink_RequestNavigate">Get a free Groq key</Hyperlink>
+                        </TextBlock>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <PasswordBox x:Name="ApiKeyBox" />
+                            <Button x:Name="TestButton" Grid.Column="1" Content="Test" MinWidth="80" Margin="8,0,0,0" Click="TestButton_Click" />
+                        </Grid>
+                        <TextBlock x:Name="TestResult" Style="{StaticResource Hint}" Margin="0,6,0,0" Visibility="Collapsed" />
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                                   Text="Stored encrypted for your Windows account only (Windows DPAPI)." />
+
+                        <Expander Header="Advanced: other providers" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="API base URL (any OpenAI-compatible service)" Style="{StaticResource Label}" />
+                                <TextBox x:Name="BaseUrlBox" />
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
+                <!-- Shortcut -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="Shortcut" Style="{StaticResource CardTitle}" />
+                        <TextBlock Style="{StaticResource Hint}" Text="Works in any app. Press Esc while recording to cancel." />
+                        <TextBlock Text="Dictation shortcut" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="HotkeyCombo" MinWidth="240" HorizontalAlignment="Left" />
+                        <TextBlock Text="How it works" Style="{StaticResource Label}" />
+                        <RadioButton x:Name="HoldRadio" GroupName="Mode" Content="Hold to talk: release to finish" />
+                        <RadioButton x:Name="ToggleRadio" GroupName="Mode" Content="Tap to start, tap again to finish (hands-free)" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Transcription -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="Transcription" Style="{StaticResource CardTitle}" />
+                        <TextBlock Text="Microphone" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="MicCombo" MinWidth="300" HorizontalAlignment="Left" DisplayMemberPath="Name" />
+                        <TextBlock Text="Speech model" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="TranscriptionModelCombo" IsEditable="True" MinWidth="300" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="whisper-large-v3-turbo" />
+                            <ComboBoxItem Content="whisper-large-v3" />
+                        </ComboBox>
+                        <TextBlock Text="Language" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="LanguageCombo" MinWidth="300" HorizontalAlignment="Left" DisplayMemberPath="Name" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Cleanup -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Text="Smart cleanup" Style="{StaticResource CardTitle}" />
+                            <CheckBox x:Name="CleanupCheck" HorizontalAlignment="Right" Content="On" />
+                        </Grid>
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="Removes &quot;um&quot;s and repeats, fixes punctuation, and applies corrections like &quot;Thursday, no actually Wednesday&quot; → &quot;Wednesday&quot;." />
+                        <TextBlock Text="Cleanup model" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="CleanupModelCombo" IsEditable="True" MinWidth="300" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="openai/gpt-oss-20b" />
+                            <ComboBoxItem Content="openai/gpt-oss-120b" />
+                            <ComboBoxItem Content="llama-3.3-70b-versatile" />
+                            <ComboBoxItem Content="llama-3.1-8b-instant" />
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- Vocabulary -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="Custom vocabulary" Style="{StaticResource CardTitle}" />
+                        <TextBlock Style="{StaticResource Hint}" Text="Names, products and jargon FreeFlow should spell exactly. One per line." />
+                        <TextBox x:Name="VocabularyBox" Margin="0,10,0,0" Height="90" AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto" />
+                    </StackPanel>
+                </Border>
+
+                <!-- General -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="General" Style="{StaticResource CardTitle}" />
+                        <CheckBox x:Name="SoundsCheck" Content="Play a soft sound when dictation starts and stops" Margin="0,8,0,0" />
+                        <CheckBox x:Name="StartupCheck" Content="Start FreeFlow when I sign in to Windows" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource Hint}" HorizontalAlignment="Center" Margin="0,4,0,0">
+                    FreeFlow for Windows · based on
+                    <Hyperlink NavigateUri="https://github.com/zachlatta/freeflow" RequestNavigate="Hyperlink_RequestNavigate">zachlatta/freeflow</Hyperlink>
+                    (MIT)
+                </TextBlock>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <Border Grid.Row="2" Padding="24,12" BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock x:Name="SavedText" Text="Saved" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.7" Visibility="Collapsed" />
+                <Button Content="Close" MinWidth="90" Margin="0,0,8,0" Click="CloseButton_Click" />
+                <Button x:Name="SaveButton" Content="Save" MinWidth="90" IsDefault="True" Click="SaveButton_Click"
+                        Style="{DynamicResource AccentButtonStyle}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

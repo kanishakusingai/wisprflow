@@ -9,8 +9,13 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/kanishakusingai/wisprflow/releases/latest/download/FreeFlow.exe"><b>⬇ Download FreeFlow.exe for Windows</b></a><br>
+  <sub>Windows 10 / 11 (64-bit) · <a href="windows/README.md">setup guide</a></sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/zachlatta/freeflow/releases/latest/download/FreeFlow.dmg"><b>⬇ Download FreeFlow.dmg</b></a><br>
-  <sub>Works on all Macs (Apple Silicon + Intel)</sub>
+  <sub>Works on all Macs (Apple Silicon + Intel), from the original project</sub>
 </p>
 
 ---

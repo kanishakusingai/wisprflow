@@ -1,0 +1,137 @@
+<Window x:Class="FreeFlow.Windows.UI.FlowBarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FreeFlow Flow Bar"
+        Width="520" Height="84"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Focusable="False"
+        ThemeMode="None"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        FontFamily="Segoe UI Variable Text, Segoe UI">
+
+    <Window.Resources>
+        <LinearGradientBrush x:Key="GlowBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+            <GradientStop Color="#8C6BFF" Offset="0" />
+            <GradientStop Color="#4A9EFF" Offset="0.5" />
+            <GradientStop Color="#5CE6DB" Offset="1" />
+        </LinearGradientBrush>
+        <SolidColorBrush x:Key="RecordingRed" Color="#FF4D52" />
+    </Window.Resources>
+
+    <Grid x:Name="Root" RenderTransformOrigin="0.5,1">
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="RootOffset" Y="0" />
+        </Grid.RenderTransform>
+
+        <!-- Pill host: width animates per state; window itself never resizes. -->
+        <Grid x:Name="PillHost" Width="196" Height="40"
+              HorizontalAlignment="Center" VerticalAlignment="Center">
+
+            <!-- Voice-reactive glow -->
+            <Border x:Name="Glow" Margin="-6" CornerRadius="26"
+                    Background="{StaticResource GlowBrush}" Opacity="0" IsHitTestVisible="False">
+                <Border.Effect>
+                    <BlurEffect x:Name="GlowBlur" Radius="14" KernelType="Gaussian" />
+                </Border.Effect>
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="GlowScale" ScaleX="1" ScaleY="0.8" CenterY="26" />
+                </Border.RenderTransform>
+            </Border>
+
+            <!-- The capsule -->
+            <Border x:Name="Pill" CornerRadius="20" BorderThickness="1" ClipToBounds="True">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#212121" Offset="0" />
+                        <GradientStop Color="#0A0A0A" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Border.BorderBrush>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#38FFFFFF" Offset="0" />
+                        <GradientStop Color="#0DFFFFFF" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.BorderBrush>
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="5" Direction="270" Opacity="0.45" Color="Black" />
+                </Border.Effect>
+
+                <Grid Margin="14,0">
+                    <!-- Recording / transcribing -->
+                    <Grid x:Name="LivePanel">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Leading: live dot, command badge, or sparkle -->
+                        <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
+                            <Grid x:Name="LiveDot" Width="14" Height="14">
+                                <Ellipse x:Name="LiveDotHalo" Fill="{StaticResource RecordingRed}" Opacity="0.3" />
+                                <Ellipse Width="7" Height="7" Fill="{StaticResource RecordingRed}" />
+                            </Grid>
+                            <Path x:Name="Sparkle" Visibility="Collapsed" Width="13" Height="13" Stretch="Uniform"
+                                  Fill="#D9FFFFFF"
+                                  Data="M12,2 L14.2,8.6 L21,11 L14.2,13.4 L12,20 L9.8,13.4 L3,11 L9.8,8.6 Z M19,1 L19.8,3.2 L22,4 L19.8,4.8 L19,7 L18.2,4.8 L16,4 L18.2,3.2 Z" />
+                        </Grid>
+
+                        <StackPanel x:Name="Bars" Grid.Column="1" Orientation="Horizontal"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" Height="24" />
+
+                        <TextBlock x:Name="TimerText" Grid.Column="2" Text="0:00" VerticalAlignment="Center"
+                                   Margin="10,0,0,0" MinWidth="28" TextAlignment="Right"
+                                   FontSize="11" FontWeight="Medium" Foreground="#99FFFFFF"
+                                   Typography.NumeralAlignment="Tabular" />
+
+                        <Button x:Name="StopButton" Grid.Column="3" Width="20" Height="20" Margin="10,0,0,0"
+                                Visibility="Collapsed" Cursor="Hand" ToolTip="Stop dictation (or press your shortcut)"
+                                Focusable="False" Click="StopButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid>
+                                        <Ellipse x:Name="Bg" Fill="{StaticResource RecordingRed}" />
+                                        <Rectangle Width="7" Height="7" RadiusX="1.5" RadiusY="1.5" Fill="White" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bg" Property="Opacity" Value="0.85" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+
+                    <!-- Starting up: three dots -->
+                    <StackPanel x:Name="InitPanel" Orientation="Horizontal" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Visibility="Collapsed">
+                        <Ellipse x:Name="Dot0" Width="5" Height="5" Fill="White" Margin="2.5,0" />
+                        <Ellipse x:Name="Dot1" Width="5" Height="5" Fill="White" Margin="2.5,0" />
+                        <Ellipse x:Name="Dot2" Width="5" Height="5" Fill="White" Margin="2.5,0" />
+                    </StackPanel>
+
+                    <!-- Message (error / info) -->
+                    <StackPanel x:Name="MessagePanel" Orientation="Horizontal" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Visibility="Collapsed">
+                        <Grid Width="16" Height="16" Margin="0,0,7,0">
+                            <Ellipse x:Name="MessageIconBg" Fill="#EBFF3B30" />
+                            <TextBlock x:Name="MessageIconGlyph" Text="!" Foreground="White" FontWeight="Black" FontSize="11"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                        </Grid>
+                        <TextBlock x:Name="MessageText" Foreground="White" FontSize="12" FontWeight="Medium"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="400" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

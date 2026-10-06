@@ -11,6 +11,8 @@ final class RecordingOverlayState: ObservableObject {
     @Published var updateVersion: String = ""
     @Published var errorMessage: String?
     @Published var toastID: UUID?
+    /// When the current recording started. Drives the Flow Bar's elapsed timer.
+    @Published var recordingStartedAt: Date?
 }
 
 enum OverlayPhase {
@@ -19,6 +21,24 @@ enum OverlayPhase {
     case transcribing
     case feedback
     case updateAvailable
+}
+
+/// Which recording indicator the user picked. Stored in UserDefaults under
+/// `overlay_style`. `.menuBar` defers to the older `use_compact_overlay`
+/// flag to choose between the notch wings and the drop-down pill.
+enum OverlayStyle: String, CaseIterable {
+    /// Floating Wispr Flow-style capsule near the bottom of the screen.
+    case flowBar
+    /// Menu-bar anchored indicator (wings or drop-down pill).
+    case menuBar
+
+    static let userDefaultsKey = "overlay_style"
+    static let defaultStyle: OverlayStyle = .flowBar
+
+    static var current: OverlayStyle {
+        let raw = UserDefaults.standard.string(forKey: userDefaultsKey) ?? ""
+        return OverlayStyle(rawValue: raw) ?? defaultStyle
+    }
 }
 
 // MARK: - NSScreen Helpers
@@ -135,6 +155,7 @@ final class RecordingOverlayManager {
             self.overlayState.isCommandMode = isCommandMode
             self.overlayState.phase = .initializing
             self.overlayState.audioLevel = 0
+            self.overlayState.recordingStartedAt = nil
             self.showOverlayPanel(animatedResize: false)
         }
     }
@@ -146,6 +167,7 @@ final class RecordingOverlayManager {
             self.overlayState.isCommandMode = isCommandMode
             self.overlayState.phase = .recording
             self.overlayState.audioLevel = 0
+            self.overlayState.recordingStartedAt = Date()
             self.showOverlayPanel(animatedResize: true)
         }
     }
@@ -156,6 +178,7 @@ final class RecordingOverlayManager {
             self.overlayState.recordingTriggerMode = mode
             self.overlayState.isCommandMode = isCommandMode
             self.overlayState.phase = .recording
+            self.overlayState.recordingStartedAt = Date()
             self.updateOverlayLayout(animated: true)
         }
     }
@@ -258,6 +281,24 @@ final class RecordingOverlayManager {
 
         guard let screen = targetScreen else { return }
 
+        if useFlowBar {
+            // Flow Bar rises up from just below its resting spot and fades in.
+            let startFrame = frame.offsetBy(dx: 0, dy: -14)
+            panel.setFrame(startFrame, display: true)
+            panel.alphaValue = 0
+            panel.orderFrontRegardless()
+
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.26
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
+                panel.animator().setFrame(frame, display: true)
+                panel.animator().alphaValue = 1
+            }
+
+            overlayWindow = panel
+            return
+        }
+
         let hiddenFrame = NSRect(x: frame.origin.x, y: screen.frame.maxY, width: frame.width, height: frame.height)
         panel.setFrame(hiddenFrame, display: true)
         panel.alphaValue = 1
@@ -287,6 +328,25 @@ final class RecordingOverlayManager {
     }
 
     private func makeOverlayContent(frame: NSRect) -> NSView {
+        if useFlowBar {
+            let rootView = FlowBarView(
+                state: overlayState,
+                shadowInset: Self.flowBarShadowInset,
+                onStopButtonPressed: { [weak self] in
+                    self?.onStopButtonPressed?()
+                },
+                onUpdateOverlayPressed: { [weak self] in
+                    self?.onUpdateOverlayPressed?()
+                }
+            )
+            .frame(width: frame.width, height: frame.height)
+
+            let hosting = NSHostingView(rootView: rootView)
+            hosting.frame = NSRect(x: 0, y: 0, width: frame.width, height: frame.height)
+            hosting.autoresizingMask = [.width, .height]
+            return hosting
+        }
+
         if useWingedLayout {
             // Winged layout: notch x-range stays solid black so the cutout masks it.
             let rootView = WingedRecordingView(
@@ -343,6 +403,7 @@ final class RecordingOverlayManager {
     /// + use_compact_overlay on). updateAvailable and error toasts still use
     /// the drop-down pill.
     private var useWingedLayout: Bool {
+        guard !useFlowBar else { return false }
         guard screenHasNotch else { return false }
         let useCompact = (UserDefaults.standard.object(forKey: "use_compact_overlay") as? Bool) ?? true
         guard useCompact else { return false }
@@ -362,8 +423,60 @@ final class RecordingOverlayManager {
     static let leftWingWidth: CGFloat = wingWidth
     static let rightWingWidth: CGFloat = wingWidth
 
+    /// True when the floating Wispr Flow-style bar is the selected style.
+    private var useFlowBar: Bool {
+        OverlayStyle.current == .flowBar
+    }
+
+    /// Transparent margin around the Flow Bar capsule so its soft shadow
+    /// and voice glow are not clipped by the panel bounds.
+    static let flowBarShadowInset: CGFloat = 18
+    static let flowBarHeight: CGFloat = 40
+    /// Gap between the bottom of the visible frame (top of the Dock) and the bar.
+    static let flowBarBottomMargin: CGFloat = 14
+
+    private var flowBarPillWidth: CGFloat {
+        if let lockedOverlayWidth, overlayState.phase == .transcribing {
+            // Keep the bar the same width it had while recording so it does
+            // not jump when dictation stops.
+            return max(96, lockedOverlayWidth - Self.flowBarShadowInset * 2)
+        }
+
+        switch overlayState.phase {
+        case .initializing:
+            return 96
+        case .transcribing:
+            return 150
+        case .updateAvailable:
+            return 200
+        case .feedback:
+            guard let msg = overlayState.errorMessage, !msg.isEmpty else { return 96 }
+            let estimated = CGFloat(msg.count) * 6.8 + 64
+            return min(440, max(190, estimated))
+        case .recording:
+            var width: CGFloat = 196
+            if overlayState.recordingTriggerMode == .toggle { width += 30 }
+            if overlayState.isCommandMode { width += 70 }
+            return width
+        }
+    }
+
+    private var flowBarFrame: NSRect {
+        guard let screen = targetScreen else { return .zero }
+        let inset = Self.flowBarShadowInset
+        let width = flowBarPillWidth + inset * 2
+        let height = Self.flowBarHeight + inset * 2
+        let x = screen.frame.midX - width / 2
+        let y = screen.visibleFrame.minY + Self.flowBarBottomMargin - inset
+        return NSRect(x: x, y: y, width: width, height: height)
+    }
+
     private var overlayFrame: NSRect {
         guard let screen = targetScreen else { return .zero }
+
+        if useFlowBar {
+            return flowBarFrame
+        }
 
         if useWingedLayout {
             // Anchor to the screen's auxiliary-area boundaries of the notch;
@@ -1074,5 +1187,313 @@ struct UpdateAvailableOverlayView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Flow Bar (Wispr Flow-style floating overlay)
+
+/// Accent palette for the Flow Bar's voice-reactive glow.
+private enum FlowBarPalette {
+    static let glow: [Color] = [
+        Color(red: 0.55, green: 0.42, blue: 1.00),
+        Color(red: 0.29, green: 0.62, blue: 1.00),
+        Color(red: 0.36, green: 0.90, blue: 0.86),
+    ]
+    static let recordingDot = Color(red: 1.00, green: 0.30, blue: 0.32)
+}
+
+/// Floating capsule that sits just above the Dock, modeled on Wispr Flow's
+/// "Flow Bar". It shows a dense live waveform, an elapsed timer and a soft
+/// glow whose intensity follows your voice.
+struct FlowBarView: View {
+    @ObservedObject var state: RecordingOverlayState
+    let shadowInset: CGFloat
+    let onStopButtonPressed: () -> Void
+    let onUpdateOverlayPressed: () -> Void
+
+    private var isRecording: Bool { state.phase == .recording }
+
+    private var showsStopButton: Bool {
+        isRecording && state.recordingTriggerMode == .toggle
+    }
+
+    /// 0...1 voice intensity used for the glow. Clamped so loud input does not blow out.
+    private var glowIntensity: Double {
+        guard isRecording else { return state.phase == .transcribing ? 0.35 : 0 }
+        return min(1.0, Double(max(state.audioLevel, 0)) * 1.4)
+    }
+
+    var body: some View {
+        ZStack {
+            FlowBarGlow(intensity: glowIntensity)
+                .padding(shadowInset - 6)
+
+            capsuleContent
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(FlowBarBackground())
+                .clipShape(Capsule())
+                .shadow(color: .black.opacity(0.45), radius: 10, x: 0, y: 5)
+                .padding(shadowInset)
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: state.phase)
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: state.recordingTriggerMode)
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: state.isCommandMode)
+        .animation(.easeOut(duration: 0.18), value: glowIntensity)
+    }
+
+    @ViewBuilder
+    private var capsuleContent: some View {
+        switch state.phase {
+        case .feedback:
+            if let message = state.errorMessage {
+                ErrorOverlayView(message: message)
+            } else {
+                FailureIndicatorView()
+            }
+        case .updateAvailable:
+            UpdateAvailableOverlayView(onPress: onUpdateOverlayPressed)
+        case .initializing:
+            InitializingDotsView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.opacity)
+        case .transcribing:
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                FlowBarWaveformView(audioLevel: 0, mode: .processing)
+            }
+            .transition(.opacity)
+        case .recording:
+            recordingContent
+                .transition(.opacity)
+        }
+    }
+
+    private var recordingContent: some View {
+        HStack(spacing: 10) {
+            if state.isCommandMode {
+                FlowBarCommandBadge()
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            } else {
+                FlowBarLiveDot()
+            }
+
+            FlowBarWaveformView(audioLevel: state.audioLevel, mode: .live)
+
+            if let start = state.recordingStartedAt {
+                FlowBarTimer(start: start)
+            }
+
+            if showsStopButton {
+                Button(action: onStopButtonPressed) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(FlowBarPalette.recordingDot))
+                }
+                .buttonStyle(.plain)
+                .help("Stop dictation")
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+    }
+}
+
+/// Deep charcoal capsule with a subtle top highlight and hairline border.
+private struct FlowBarBackground: View {
+    var body: some View {
+        ZStack {
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(white: 0.13),
+                            Color(white: 0.04),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            Capsule()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            .white.opacity(0.22),
+                            .white.opacity(0.05),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        }
+    }
+}
+
+/// Soft, blurred gradient halo behind the capsule. Breathes with voice level.
+private struct FlowBarGlow: View {
+    let intensity: Double
+
+    var body: some View {
+        Capsule()
+            .fill(
+                LinearGradient(
+                    colors: FlowBarPalette.glow,
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .blur(radius: 10 + 6 * intensity)
+            .opacity(0.15 + 0.6 * intensity)
+            .scaleEffect(x: 1.0, y: 0.75 + 0.25 * intensity)
+            .opacity(intensity > 0 ? 1 : 0)
+    }
+}
+
+/// Pulsing "on air" dot shown while recording.
+private struct FlowBarLiveDot: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let pulse = 0.5 + 0.5 * sin(t * 4.0)
+            ZStack {
+                Circle()
+                    .fill(FlowBarPalette.recordingDot.opacity(0.35 * pulse))
+                    .frame(width: 14, height: 14)
+                Circle()
+                    .fill(FlowBarPalette.recordingDot)
+                    .frame(width: 7, height: 7)
+            }
+            .frame(width: 14, height: 14)
+        }
+    }
+}
+
+/// Small pill telling the user they are dictating a command, not text.
+private struct FlowBarCommandBadge: View {
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 10, weight: .semibold))
+            Text("Command")
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            Capsule().fill(
+                LinearGradient(
+                    colors: [FlowBarPalette.glow[0], FlowBarPalette.glow[1]],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+        )
+    }
+}
+
+/// m:ss elapsed-time readout.
+private struct FlowBarTimer: View {
+    let start: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: start, by: 1.0)) { context in
+            Text(Self.format(context.date.timeIntervalSince(start)))
+                .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.6))
+                .frame(minWidth: 28, alignment: .trailing)
+        }
+    }
+
+    static func format(_ interval: TimeInterval) -> String {
+        let total = max(0, Int(interval))
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Dense, center-weighted waveform. In `.live` mode bar heights follow the
+/// microphone level with organic per-bar motion; in `.processing` mode a
+/// bright highlight sweeps across low bars while the transcript is cleaned up.
+struct FlowBarWaveformView: View {
+    enum Mode {
+        case live
+        case processing
+    }
+
+    let audioLevel: Float
+    let mode: Mode
+
+    private static let barCount = 21
+    private static let barWidth: CGFloat = 2.5
+    private static let barSpacing: CGFloat = 2.5
+    private static let minHeight: CGFloat = 3
+    private static let maxHeight: CGFloat = 24
+    private static let center = Double(barCount - 1) / 2.0
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 45.0, paused: false)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: Self.barSpacing) {
+                ForEach(0..<Self.barCount, id: \.self) { index in
+                    Capsule()
+                        .fill(Color.white.opacity(opacity(for: index, time: t)))
+                        .frame(
+                            width: Self.barWidth,
+                            height: Self.minHeight + (Self.maxHeight - Self.minHeight) * amplitude(for: index, time: t)
+                        )
+                }
+            }
+            .animation(.spring(response: 0.16, dampingFraction: 0.82), value: audioLevel)
+        }
+        .frame(height: Self.maxHeight)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Bell-shaped weighting so the middle bars move the most.
+    private func envelope(for index: Int) -> Double {
+        let distance = (Double(index) - Self.center) / Self.center
+        return exp(-distance * distance * 2.2)
+    }
+
+    private func amplitude(for index: Int, time: TimeInterval) -> CGFloat {
+        let i = Double(index)
+        switch mode {
+        case .live:
+            let level = min(1.0, Double(max(audioLevel, 0)) * 1.15)
+            // Layered sines give each bar its own organic wobble.
+            let wobble = 0.55
+                + 0.25 * sin(time * 9.0 + i * 1.7)
+                + 0.20 * sin(time * 5.3 - i * 0.9)
+            let speaking = level * envelope(for: index) * wobble
+            // Gentle breathing so the bar looks alive during silence.
+            let idle = 0.05 + 0.04 * (0.5 + 0.5 * sin(time * 2.4 - i * 0.45))
+            return CGFloat(min(1.0, idle + speaking))
+        case .processing:
+            let sweep = sweepStrength(for: index, time: time)
+            return CGFloat(0.08 + 0.32 * sweep)
+        }
+    }
+
+    private func opacity(for index: Int, time: TimeInterval) -> Double {
+        switch mode {
+        case .live:
+            return 0.55 + 0.45 * envelope(for: index)
+        case .processing:
+            return 0.3 + 0.7 * sweepStrength(for: index, time: time)
+        }
+    }
+
+    /// 0...1 brightness of the highlight passing over `index`.
+    private func sweepStrength(for index: Int, time: TimeInterval) -> Double {
+        let cycle = 1.3
+        let progress = time.truncatingRemainder(dividingBy: cycle) / cycle
+        let position = progress * Double(Self.barCount + 8) - 4
+        let distance = abs(Double(index) - position)
+        return max(0, 1 - distance / 4)
     }
 }

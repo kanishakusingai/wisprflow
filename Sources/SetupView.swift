@@ -105,8 +105,6 @@ struct SetupView: View {
     @State private var isCapturingToggleShortcut = false
     @State private var isCapturingCopyAgainShortcut = false
     @StateObject private var testHotkeyHarness = SetupTestHotkeyHarness()
-    @AppStorage("use_compact_overlay") private var useCompactOverlay = true
-
     private let totalSteps: [SetupStep] = SetupStep.allCases
     private var isCapturingShortcut: Bool {
         isCapturingHoldShortcut || isCapturingToggleShortcut || isCapturingCopyAgainShortcut
@@ -876,21 +874,8 @@ struct SetupView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(spacing: 10) {
-                OverlayStyleOptionRow(
-                    title: "Minimalist menu-bar overlay",
-                    subtitle: "Two slim wings flank the camera notch and stay inside the menu bar. Never covers app tabs or toolbars.",
-                    isMinimalist: true,
-                    selection: $useCompactOverlay
-                )
-                OverlayStyleOptionRow(
-                    title: "Drop-down pill",
-                    subtitle: "Single pill hangs below the menu bar during recording. Larger and more visible, but covers a thin strip of whatever app is active.",
-                    isMinimalist: false,
-                    selection: $useCompactOverlay
-                )
-            }
-            .padding(.top, 6)
+            OverlayStylePicker()
+                .padding(.top, 6)
         }
     }
 
@@ -1604,30 +1589,166 @@ struct OverlayStylePreview: View {
     }
 }
 
-/// Shared picker row used by both Setup and Settings so the UI matches in both.
-struct OverlayStyleOptionRow: View {
-    let title: String
-    let subtitle: String
-    let isMinimalist: Bool
-    @Binding var selection: Bool
+/// Mini preview of the floating Flow Bar: a dark capsule with a waveform
+/// resting just above a stylized Dock.
+struct FlowBarStylePreview: View {
+    private let frameWidth: CGFloat = 110
+    private let frameHeight: CGFloat = 56
+    private static let barHeights: [CGFloat] = [2, 3, 5, 7, 9, 7, 5, 3, 2]
 
     var body: some View {
-        let isSelected = (selection == isMinimalist)
-        Button(action: {
-            selection = isMinimalist
-        }) {
+        ZStack(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(nsColor: .windowBackgroundColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.primary.opacity(0.15), lineWidth: 0.5)
+                )
+
+            VStack(spacing: 4) {
+                ZStack {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.55, green: 0.42, blue: 1.0),
+                                    Color(red: 0.36, green: 0.90, blue: 0.86),
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: 50, height: 14)
+                        .blur(radius: 4)
+                        .opacity(0.7)
+
+                    Capsule()
+                        .fill(Color.black)
+                        .frame(width: 46, height: 13)
+                        .overlay(
+                            HStack(spacing: 1.5) {
+                                ForEach(Self.barHeights.indices, id: \.self) { index in
+                                    Capsule()
+                                        .fill(Color.white)
+                                        .frame(width: 1.5, height: Self.barHeights[index])
+                                }
+                            }
+                        )
+                }
+
+                // Dock stand-in.
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.primary.opacity(0.14))
+                    .frame(width: 70, height: 7)
+            }
+            .padding(.bottom, 4)
+        }
+        .frame(width: frameWidth, height: frameHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+/// The three recording-indicator choices shown in Setup and Settings.
+enum OverlayStyleChoice: CaseIterable {
+    case flowBar
+    case minimalist
+    case dropDown
+
+    var title: String {
+        switch self {
+        case .flowBar: return "Flow Bar"
+        case .minimalist: return "Minimalist menu-bar overlay"
+        case .dropDown: return "Drop-down pill"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .flowBar:
+            return "A sleek floating bar above the Dock with a live waveform, timer and a glow that reacts to your voice. Never touches the menu bar."
+        case .minimalist:
+            return "Two slim wings flank the camera notch and stay inside the menu bar. Never covers app tabs or toolbars."
+        case .dropDown:
+            return "Single pill hangs below the menu bar during recording. Larger and more visible, but covers a thin strip of whatever app is active."
+        }
+    }
+}
+
+/// Shared overlay style picker used by both Setup and Settings so they match.
+/// Writes `overlay_style` and, for the menu-bar styles, `use_compact_overlay`.
+struct OverlayStylePicker: View {
+    @AppStorage(OverlayStyle.userDefaultsKey) private var overlayStyleRaw = OverlayStyle.defaultStyle.rawValue
+    @AppStorage("use_compact_overlay") private var useCompactOverlay = true
+
+    private let spacing: CGFloat
+
+    init(spacing: CGFloat = 10) {
+        self.spacing = spacing
+    }
+
+    private var currentChoice: OverlayStyleChoice {
+        if (OverlayStyle(rawValue: overlayStyleRaw) ?? OverlayStyle.defaultStyle) == .flowBar {
+            return .flowBar
+        }
+        return useCompactOverlay ? .minimalist : .dropDown
+    }
+
+    var body: some View {
+        VStack(spacing: spacing) {
+            ForEach(OverlayStyleChoice.allCases, id: \.self) { choice in
+                OverlayStyleOptionRow(
+                    choice: choice,
+                    isSelected: currentChoice == choice,
+                    onSelect: { select(choice) }
+                )
+            }
+        }
+    }
+
+    private func select(_ choice: OverlayStyleChoice) {
+        switch choice {
+        case .flowBar:
+            overlayStyleRaw = OverlayStyle.flowBar.rawValue
+        case .minimalist:
+            overlayStyleRaw = OverlayStyle.menuBar.rawValue
+            useCompactOverlay = true
+        case .dropDown:
+            overlayStyleRaw = OverlayStyle.menuBar.rawValue
+            useCompactOverlay = false
+        }
+    }
+}
+
+/// One selectable card in `OverlayStylePicker`.
+struct OverlayStyleOptionRow: View {
+    let choice: OverlayStyleChoice
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20))
                     .foregroundStyle(isSelected ? Color.blue : Color.secondary)
 
-                OverlayStylePreview(isMinimalist: isMinimalist)
+                preview
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
+                    HStack(spacing: 6) {
+                        Text(choice.title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        if choice == .flowBar {
+                            Text("NEW")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color.purple))
+                        }
+                    }
+                    Text(choice.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1643,7 +1764,20 @@ struct OverlayStyleOptionRow: View {
                             .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
                     )
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        switch choice {
+        case .flowBar:
+            FlowBarStylePreview()
+        case .minimalist:
+            OverlayStylePreview(isMinimalist: true)
+        case .dropDown:
+            OverlayStylePreview(isMinimalist: false)
+        }
     }
 }

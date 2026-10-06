@@ -533,7 +533,6 @@ struct GeneralSettingsView: View {
     @Environment(\.openURL) private var openURL
     @AppStorage("show_menu_bar_icon") private var showMenuBarIcon = true
     @AppStorage("overlay_display_id") private var overlayDisplayID = 0
-    @AppStorage("use_compact_overlay") private var useCompactOverlay = true
     @State private var screensVersion = 0
     @State private var apiKeyInput: String = ""
     @State private var apiBaseURLInput: String = ""
@@ -1127,18 +1126,7 @@ struct GeneralSettingsView: View {
 
     private var overlaySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            OverlayStyleOptionRow(
-                title: "Minimalist menu-bar overlay",
-                subtitle: "Two slim wings flank the camera notch and stay inside the menu bar. Never covers app tabs or toolbars.",
-                isMinimalist: true,
-                selection: $useCompactOverlay
-            )
-            OverlayStyleOptionRow(
-                title: "Drop-down pill",
-                subtitle: "Single pill hangs below the menu bar during recording. Larger and more visible, but covers a thin strip of whatever app is active.",
-                isMinimalist: false,
-                selection: $useCompactOverlay
-            )
+            OverlayStylePicker(spacing: 12)
 
             Divider()
 
